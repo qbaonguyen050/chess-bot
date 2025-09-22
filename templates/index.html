@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Chess Engine</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #board-container {
+            width: 400px;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        #controls, #game-setup {
+            text-align: center;
+        }
+        input, button {
+            background-color: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            padding: 8px;
+            font-size: 1em;
+        }
+        #message {
+            margin-top: 10px;
+            font-size: 1.1em;
+            color: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <h1>Your Custom Chess Engine</h1>
+    <div id="board-container">
+        <!-- SVG will be loaded here -->
+    </div>
+
+    <div id="game-setup">
+        <p>Choose your color to start:</p>
+        <button onclick="startGame('W')">Play as White</button>
+        <button onclick="startGame('B')">Play as Black</button>
+    </div>
+
+    <div id="controls" style="display:none;">
+        <input type="text" id="move-input" placeholder="Enter move (e.g., e4, Nf3)">
+        <button onclick="sendMove()">Submit Move</button>
+        <p id="message"></p>
+    </div>
+
+    <script>
+        function updateBoard() {
+            // Add a timestamp to prevent browser caching of the SVG
+            fetch('/board_svg?t=' + new Date().getTime())
+                .then(response => response.text())
+                .then(svg => {
+                    document.getElementById('board-container').innerHTML = svg;
+                });
+        }
+
+        function startGame(color) {
+            document.getElementById('game-setup').style.display = 'none';
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('message').innerText = `New game started. You are ${color === 'W' ? 'White' : 'Black'}.`;
+
+            fetch('/new_game', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({color: color})
+            })
+            .then(() => updateBoard());
+        }
+
+        function sendMove() {
+            const moveInput = document.getElementById('move-input');
+            const move = moveInput.value;
+            if (!move) return;
+
+            document.getElementById('message').innerText = "Thinking...";
+
+            fetch('/move', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({move: move})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('message').innerText = `Error: ${data.error}`;
+                } else if (data.message) {
+                    document.getElementById('message').innerText = data.message;
+                }
+                else {
+                    document.getElementById('message').innerText = "AI has moved.";
+                }
+                moveInput.value = '';
+                updateBoard();
+            });
+        }
+    </script>
+</body>
+</html>
