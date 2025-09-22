@@ -2,90 +2,55 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Chess Engine</title>
+    <title>Codespace Chess Engine</title>
     <style>
-        body {
-            background-color: #121212;
-            color: #e0e0e0;
-            font-family: monospace;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        #board-container {
-            width: 400px;
-            height: 400px;
-            margin-bottom: 20px;
-        }
-        #controls, #game-setup {
-            text-align: center;
-        }
-        input, button {
-            background-color: #333;
-            color: #e0e0e0;
-            border: 1px solid #555;
-            padding: 8px;
-            font-size: 1em;
-        }
-        #message {
-            margin-top: 10px;
-            font-size: 1.1em;
-            color: #4caf50;
-        }
+        body { background-color: #121212; color: #e0e0e0; font-family: monospace;
+               display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        #board-container { width: 40vw; max-width: 400px; margin-bottom: 20px; }
+        #controls input, #game-setup button { background-color: #333; color: #e0e0e0; border: 1px solid #555; padding: 10px; font-size: 1em; }
+        #message { margin-top: 15px; height: 20px; color: #4caf50; }
     </style>
 </head>
 <body>
-    <h1>Your Custom Chess Engine</h1>
-    <div id="board-container">
-        <!-- SVG will be loaded here -->
-    </div>
-
+    <h1>Custom Chess Bot</h1>
+    <div id="board-container"></div>
     <div id="game-setup">
-        <p>Choose your color to start:</p>
+        <p>Choose Your Side:</p>
         <button onclick="startGame('W')">Play as White</button>
         <button onclick="startGame('B')">Play as Black</button>
     </div>
-
     <div id="controls" style="display:none;">
-        <input type="text" id="move-input" placeholder="Enter move (e.g., e4, Nf3)">
-        <button onclick="sendMove()">Submit Move</button>
+        <input type="text" id="move-input" placeholder="Your move (e.g. e4, Nf3)" autocomplete="off">
+        <button onclick="sendMove()">Submit</button>
         <p id="message"></p>
     </div>
 
     <script>
+        const boardContainer = document.getElementById('board-container');
+        const messageEl = document.getElementById('message');
+        const moveInput = document.getElementById('move-input');
+
         function updateBoard() {
-            // Add a timestamp to prevent browser caching of the SVG
-            fetch('/board_svg?t=' + new Date().getTime())
+            fetch('/board_svg?t=' + new Date().getTime()) // Timestamp prevents caching
                 .then(response => response.text())
-                .then(svg => {
-                    document.getElementById('board-container').innerHTML = svg;
-                });
+                .then(svg => { boardContainer.innerHTML = svg; });
         }
 
         function startGame(color) {
             document.getElementById('game-setup').style.display = 'none';
             document.getElementById('controls').style.display = 'block';
-            document.getElementById('message').innerText = `New game started. You are ${color === 'W' ? 'White' : 'Black'}.`;
-
+            messageEl.textContent = `New game started. You play as ${color === 'W' ? 'White' : 'Black'}.`;
             fetch('/new_game', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({color: color})
-            })
-            .then(() => updateBoard());
+            }).then(updateBoard);
         }
 
         function sendMove() {
-            const moveInput = document.getElementById('move-input');
             const move = moveInput.value;
             if (!move) return;
-
-            document.getElementById('message').innerText = "Thinking...";
-
+            messageEl.textContent = 'Engine is thinking...';
             fetch('/move', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -93,18 +58,18 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    document.getElementById('message').innerText = `Error: ${data.error}`;
-                } else if (data.message) {
-                    document.getElementById('message').innerText = data.message;
+                messageEl.textContent = data.error || data.message || '';
+                if (data.game_over) {
+                    document.getElementById('controls').style.display = 'none';
                 }
-                else {
-                    document.getElementById('message').innerText = "AI has moved.";
-                }
-                moveInput.value = '';
                 updateBoard();
             });
+            moveInput.value = '';
         }
+
+        moveInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') sendMove();
+        });
     </script>
 </body>
 </html>

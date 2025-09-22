@@ -30,8 +30,12 @@ def evaluate_board(board):
         piece = board.piece_at(sq)
         if piece:
             val = piece_score[piece.symbol().upper()]
-            if piece.color == chess.WHITE: score += val
-            else: score -= val
+            pos_score = 0 # Placeholder for positional evaluation
+            if piece.symbol().upper() in piece_position_scores:
+                 # A real implementation needs to correctly orient the board
+                 pass # Simplified for now
+            if piece.color == chess.WHITE: score += val + pos_score
+            else: score -= val + pos_score
     return score
 
 def minimax(board, depth, alpha, beta, maximizing_player):
@@ -66,7 +70,11 @@ def get_best_move(board, depth):
     max_eval, min_eval = -float('inf'), float('inf')
     is_maximizing = board.turn == chess.WHITE
     
-    for move in board.legal_moves:
+    # Use a shuffled list to ensure variety in openings if scores are equal
+    moves = list(board.legal_moves)
+    random.shuffle(moves)
+
+    for move in moves:
         board.push(move)
         eval = minimax(board, depth - 1, -float('inf'), float('inf'), not is_maximizing)
         board.pop()
@@ -75,87 +83,5 @@ def get_best_move(board, depth):
         elif not is_maximizing and eval < min_eval:
             min_eval, best_move = eval, move
             
-    return best_move or random.choice(list(board.legal_moves))```
-
----
-
-### **5. User Interface: `templates/index.html`**
-
-A simple, fast-loading HTML file with a black background and a chat-like input for moves.
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Codespace Chess Engine</title>
-    <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: monospace;
-               display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        #board-container { width: 40vw; max-width: 400px; margin-bottom: 20px; }
-        #controls input, #game-setup button { background-color: #333; color: #e0e0e0; border: 1px solid #555; padding: 10px; font-size: 1em; }
-        #message { margin-top: 15px; height: 20px; color: #4caf50; }
-    </style>
-</head>
-<body>
-    <h1>Custom Chess Bot</h1>
-    <div id="board-container"></div>
-    <div id="game-setup">
-        <p>Choose Your Side:</p>
-        <button onclick="startGame('W')">Play as White</button>
-        <button onclick="startGame('B')">Play as Black</button>
-    </div>
-    <div id="controls" style="display:none;">
-        <input type="text" id="move-input" placeholder="Your move (e.g. e4, Nf3)" autocomplete="off">
-        <button onclick="sendMove()">Submit</button>
-        <p id="message"></p>
-    </div>
-
-    <script>
-        const boardContainer = document.getElementById('board-container');
-        const messageEl = document.getElementById('message');
-        const moveInput = document.getElementById('move-input');
-
-        function updateBoard() {
-            fetch('/board_svg?t=' + new Date().getTime()) // Timestamp prevents caching
-                .then(response => response.text())
-                .then(svg => { boardContainer.innerHTML = svg; });
-        }
-
-        function startGame(color) {
-            document.getElementById('game-setup').style.display = 'none';
-            document.getElementById('controls').style.display = 'block';
-            messageEl.textContent = `New game started. You play as ${color === 'W' ? 'White' : 'Black'}.`;
-            fetch('/new_game', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({color: color})
-            }).then(updateBoard);
-        }
-
-        function sendMove() {
-            const move = moveInput.value;
-            if (!move) return;
-            messageEl.textContent = 'Engine is thinking...';
-            fetch('/move', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({move: move})
-            })
-            .then(response => response.json())
-            .then(data => {
-                messageEl.textContent = data.error || data.message || '';
-                if (data.game_over) {
-                    document.getElementById('controls').style.display = 'none';
-                }
-                updateBoard();
-            });
-            moveInput.value = '';
-        }
-
-        moveInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') sendMove();
-        });
-    </script>
-</body>
-</html>
+    # Fallback to a random move if no best move is found (should not happen in normal play)
+    return best_move or (moves[0] if moves else None)
