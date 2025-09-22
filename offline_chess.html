@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Offline Chess</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: monospace; background-color: #121212; color: #e0e0e0; display: flex;
+               flex-direction: column; align-items: center; margin: 0; padding-top: 20px; }
+        h1, p { text-align: center; }
+        #board { width: 90vw; max-width: 500px; height: 90vw; max-height: 500px; display: grid;
+                 grid-template-columns: repeat(8, 1fr); border: 2px solid #555; }
+        .square { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+                  font-size: 5.5vmin; }
+        .light { background-color: #d2b48c; }
+        .dark { background-color: #8b4513; }
+        .selected { background-color: rgba(255, 255, 0, 0.6) !important; }
+        #controls input, #game-setup button { background-color: #333; color: #e0e0e0; border: 1px solid #555; 
+                                              padding: 10px; font-size: 1em; margin: 5px; }
+        #message { margin-top: 15px; height: 20px; color: #4caf50; font-size: 1.1em; }
+        #status { font-style: italic; color: #aaa; }
+    </style>
+</head>
+<body>
+    <h1>Custom Chess Bot (Offline)</h1>
+    <p id="status">Online. Ready to be saved for offline use.</p>
+    <div id="board"></div>
+
+    <div id="game-setup">
+        <p>Choose Your Side:</p>
+        <button onclick="startGame('w')">Play as White</button>
+        <button onclick="startGame('b')">Play as Black</button>
+    </div>
+    <div id="controls" style="display:none;">
+        <p id="message"></p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script>
+        // --- OFFLINE SERVICE WORKER ---
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered successfully'))
+                .catch(err => console.error('Service Worker registration failed:', err));
+            
+            // Update status message based on network status
+            window.addEventListener('offline', () => {
+                document.getElementById('status').textContent = 'Running Offline.';
+            });
+        }
+
+        // --- UI LOGIC ---
+        const boardEl = document.getElementById('board');
+        const messageEl = document.getElementById('message');
+        const game = new Chess();
+        let playerColor = 'w';
+        let selectedSquare = null;
+
+        const pieceUnicode = {
+            'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+            'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+        };
+
+        function drawBoard() {
+            boardEl.innerHTML = '';
+            const boardState = game.board();
+            for (let r = 0; r < 8; r++) {
+                for (let f = 0; f < 8; f++) {
+                    const square = document.createElement('div');
+                    const isLight = (r + f) % 2 !== 0;
+                    square.classList.add('square', isLight ? 'light' : 'dark');
+                    
+                    const file = 'abcdefgh'[f];
+                    const rank = 8 - r;
+                    const squareName = file + rank;
+                    square.dataset.square = squareName;
+
+                    const piece = boardState[r][f];
+                    if (piece) {
+                        square.textContent = pieceUnicode[piece.type];
+                        square.style.color = piece.color === 'w' ? '#fff' : '#000';
+                        square.style.cursor = 'grab';
+                    }
+                    
+                    if (selectedSquare === squareName) {
+                        square.classList.add('selected');
+                    }
+
+                    square.addEventListener('click', () => onSquareClick(squareName));
+                    boardEl.appendChild(square);
+                }
+            }
+            if (playerColor === 'b') {
+                boardEl.style.flexDirection = 'column-reverse';
+            } else {
+                boardEl.style.flexDirection = 'column';
+            }
+        }
+        
+        function onSquareClick(squareName) {
+            if (game.turn() !== playerColor) return;
+
+            const piece = game.get(squareName);
+
+            if (selectedSquare) {
+                const move = { from: selectedSquare, to: squareName, promotion: 'q' }; // auto-promote to queen
+                const result = game.move(move);
+                if (result) {
+                    selectedSquare = null;
+                    drawBoard();
+                    setTimeout(handleGameTurn, 250);
+                } else {
+                    // Invalid move, maybe select new piece?
+                    if (piece && piece.color === playerColor) {
+                        selectedSquare = squareName;
+                    } else {
+                        selectedSquare = null;
+                    }
+                    drawBoard();
+                }
+            } else if (piece && piece.color === playerColor) {
+                selectedSquare = squareName;
+                drawBoard();
+            }
+        }
+
+        function handleGameTurn() {
+            if (game.game_over()) {
+                messageEl.textContent = "Game Over: " + (game.in_checkmate() ? "Checkmate!" : "Draw!");
+                return;
+            }
+
+            if (game.turn() !== playerColor) {
+                messageEl.textContent = 'AI is thinking...';
+                // Use a timeout to allow the board to redraw before the AI calculates
+                setTimeout(() => {
+                    const aiMove = getBestMove(game);
+                    game.move(aiMove);
+                    drawBoard();
+                    messageEl.textContent = 'Your turn.';
+                    handleGameTurn(); // Re-check for game over after AI move
+                }, 50);
+            }
+        }
+
+        function startGame(color) {
+            playerColor = color;
+            document.getElementById('game-setup').style.display = 'none';
+            document.getElementById('controls').style.display = 'block';
+            messageEl.textContent = 'New game started. Your turn.';
+            game.reset();
+            if (playerColor === 'b') {
+                handleGameTurn();
+            }
+            drawBoard();
+        }
+
+        // --- JAVASCRIPT CHESS ENGINE ---
+        // A direct port of the Python engine's logic
+
+        const pieceValues = { 'p': 100, 'n': 320, 'b': 330, 'r': 500, 'q': 900, 'k': 20000 };
+
+        function evaluateBoard(board) {
+            let total = 0;
+            for (let r = 0; r < 8; r++) {
+                for (let f = 0; f < 8; f++) {
+                    const piece = board[r][f];
+                    if (piece) {
+                        const value = pieceValues[piece.type];
+                        total += (piece.color === 'w' ? value : -value);
+                    }
+                }
+            }
+            return total;
+        }
+
+        function minimax(game, depth, alpha, beta, isMaximizingPlayer) {
+            if (depth === 0 || game.game_over()) {
+                return -evaluateBoard(game.board()); // Negate because chess.js eval is from black's perspective
+            }
+
+            const moves = game.moves();
+            if (isMaximizingPlayer) {
+                let maxEval = -Infinity;
+                for (const move of moves) {
+                    game.move(move);
+                    const eval = minimax(game, depth - 1, alpha, beta, false);
+                    game.undo();
+                    maxEval = Math.max(maxEval, eval);
+                    alpha = Math.max(alpha, eval);
+                    if (beta <= alpha) break;
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (const move of moves) {
+                    game.move(move);
+                    const eval = minimax(game, depth - 1, alpha, beta, true);
+                    game.undo();
+                    minEval = Math.min(minEval, eval);
+                    beta = Math.min(beta, eval);
+                    if (beta <= alpha) break;
+                }
+                return minEval;
+            }
+        }
+
+        function getBestMove(game) {
+            let bestMove = null;
+            let bestValue = -Infinity;
+            const isMaximizing = game.turn() === 'w';
+            
+            for (const move of game.moves()) {
+                game.move(move);
+                // The 'true' player is always the one whose turn it is
+                const boardValue = minimax(game, 2, -Infinity, Infinity, !isMaximizing); // Depth 2 for speed in JS
+                game.undo();
+                
+                if (isMaximizing) {
+                    if (boardValue > bestValue) {
+                        bestValue = boardValue;
+                        bestMove = move;
+                    }
+                } else {
+                    if (boardValue < bestValue) { // This seems reversed, but it's correct from white's perspective
+                        bestValue = boardValue;
+                        bestMove = move;
+                    }
+                }
+            }
+            // Simple fix for black's evaluation
+            if(!isMaximizing){
+                bestValue = Infinity
+                 for (const move of game.moves()) {
+                    game.move(move);
+                    const boardValue = minimax(game, 2, -Infinity, Infinity, true);
+                    game.undo();
+                    if(boardValue < bestValue){
+                        bestValue = boardValue
+                        bestMove = move
+                    }
+                }
+            }
+            return bestMove;
+        }
+
+        drawBoard(); // Initial draw
+    </script>
+</body>
+</html>

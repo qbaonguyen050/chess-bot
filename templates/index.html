@@ -2,26 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Codespace Chess Engine</title>
     <style>
         body { background-color: #121212; color: #e0e0e0; font-family: monospace;
                display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        #board-container { width: 40vw; max-width: 400px; margin-bottom: 20px; }
+        #board-container { width: 90vw; max-width: 500px; position: relative; }
+        #board-svg { width: 100%; }
+        .piece { cursor: grab; }
+        .dragging { cursor: grabbing; opacity: 0.7; }
         #controls input, #game-setup button { background-color: #333; color: #e0e0e0; border: 1px solid #555; padding: 10px; font-size: 1em; }
-        #message { margin-top: 15px; height: 20px; color: #4caf50; }
+        #message { margin-top: 15px; height: 20px; color: #4caf50; font-size: 1.1em; }
     </style>
 </head>
 <body>
-    <h1>Custom Chess Bot</h1>
-    <div id="board-container"></div>
+    <h1>Custom Chess Bot (Online)</h1>
+    <div id="board-container">
+        <!-- SVG will be dynamically loaded here -->
+    </div>
     <div id="game-setup">
         <p>Choose Your Side:</p>
         <button onclick="startGame('W')">Play as White</button>
         <button onclick="startGame('B')">Play as Black</button>
     </div>
     <div id="controls" style="display:none;">
-        <input type="text" id="move-input" placeholder="Your move (e.g. e4, Nf3)" autocomplete="off">
-        <button onclick="sendMove()">Submit</button>
+        <input type="text" id="move-input" placeholder="Type move (e.g. e4) or drag piece" autocomplete="off">
+        <button onclick="sendMoveFromInput()">Submit</button>
         <p id="message"></p>
     </div>
 
@@ -29,17 +35,24 @@
         const boardContainer = document.getElementById('board-container');
         const messageEl = document.getElementById('message');
         const moveInput = document.getElementById('move-input');
+        
+        let selectedSquare = null;
+        let playerColor = 'W';
 
         function updateBoard() {
-            fetch('/board_svg?t=' + new Date().getTime()) // Timestamp prevents caching
+            fetch('/board_svg?t=' + new Date().getTime())
                 .then(response => response.text())
-                .then(svg => { boardContainer.innerHTML = svg; });
+                .then(svg => {
+                    boardContainer.innerHTML = svg;
+                    addDragListeners();
+                });
         }
 
         function startGame(color) {
+            playerColor = color;
             document.getElementById('game-setup').style.display = 'none';
             document.getElementById('controls').style.display = 'block';
-            messageEl.textContent = `New game started. You play as ${color === 'W' ? 'White' : 'Black'}.`;
+            messageEl.textContent = `Game started. You play as ${color === 'W' ? 'White' : 'Black'}.`;
             fetch('/new_game', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -47,10 +60,12 @@
             }).then(updateBoard);
         }
 
-        function sendMove() {
-            const move = moveInput.value;
+        function sendMove(move) {
             if (!move) return;
             messageEl.textContent = 'Engine is thinking...';
+            moveInput.value = '';
+            selectedSquare = null;
+
             fetch('/move', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -64,11 +79,52 @@
                 }
                 updateBoard();
             });
-            moveInput.value = '';
+        }
+        
+        function sendMoveFromInput() {
+            sendMove(moveInput.value);
+        }
+
+        function getSquareFromCoordinates(x, y) {
+            const boardRect = boardContainer.querySelector('svg').getBoundingClientRect();
+            const squareSize = boardRect.width / 8;
+            let col = Math.floor((x - boardRect.left) / squareSize);
+            let row = Math.floor((y - boardRect.top) / squareSize);
+            
+            if (playerColor === 'B') {
+                col = 7 - col;
+                row = 7 - row;
+            }
+
+            const files = 'abcdefgh';
+            return files[col] + (8 - row);
+        }
+
+        function addDragListeners() {
+            const svg = boardContainer.querySelector('svg');
+            if (!svg) return;
+
+            svg.addEventListener('mousedown', (e) => {
+                const square = getSquareFromCoordinates(e.clientX, e.clientY);
+                if (selectedSquare) {
+                    // This is the second click (destination)
+                    const move = selectedSquare + square;
+                    sendMove(move);
+                } else {
+                    // This is the first click (source)
+                    const piece = e.target.closest('.piece');
+                    if (piece) {
+                        selectedSquare = square;
+                        // Add a visual indicator for the selected square
+                        const rect = svg.querySelector(`rect[id^="${square}"]`);
+                        if(rect) rect.style.fill = 'rgba(255, 255, 0, 0.5)';
+                    }
+                }
+            });
         }
 
         moveInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') sendMove();
+            if (event.key === 'Enter') sendMoveFromInput();
         });
     </script>
 </body>
